@@ -1,4 +1,3 @@
-import {} from "amqplib";
 export function publishJSON(ch, exchange, routingKey, value) {
     const content = Buffer.from(JSON.stringify(value));
     return new Promise((resolve, reject) => {
