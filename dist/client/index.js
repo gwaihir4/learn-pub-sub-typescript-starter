@@ -1,11 +1,12 @@
 import amqp from "amqplib";
 import { clientWelcome, commandStatus, getInput, printClientHelp, printQuit, } from "../internal/gamelogic/gamelogic.js";
 import { declareAndBind, SimpleQueueType, subscribeJSON, } from "../internal/pubsub/consume.js";
-import { ExchangePerilDirect, PauseKey } from "../internal/routing/routing.js";
+import { ArmyMovesPrefix, ExchangePerilDirect, ExchangePerilTopic, PauseKey, } from "../internal/routing/routing.js";
 import { GameState } from "../internal/gamelogic/gamestate.js";
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
 import { commandMove } from "../internal/gamelogic/move.js";
-import { handlerPause } from "./handlers.js";
+import { handlerMove, handlerPause } from "./handlers.js";
+import { publishJSON } from "../internal/pubsub/publish.js";
 async function main() {
     const rabbitConnString = "amqp://guest:guest@localhost:5672/";
     const conn = await amqp.connect(rabbitConnString);
@@ -24,6 +25,8 @@ async function main() {
     }));
     const username = await clientWelcome();
     const gs = new GameState(username);
+    const publishCh = await conn.createConfirmChannel();
+    await subscribeJSON(conn, ExchangePerilTopic, `${ArmyMovesPrefix}.${username}`, `${ArmyMovesPrefix}.*`, SimpleQueueType.Transient, handlerMove(gs));
     await subscribeJSON(conn, ExchangePerilDirect, `${PauseKey}.${username}`, PauseKey, SimpleQueueType.Transient, handlerPause(gs));
     while (true) {
         const words = await getInput();
@@ -33,7 +36,8 @@ async function main() {
         const command = words[0];
         if (command === "move") {
             try {
-                commandMove(gs, words);
+                const move = commandMove(gs, words);
+                publishJSON(publishCh, ExchangePerilTopic, `${ArmyMovesPrefix}.${username}`, move);
             }
             catch (err) {
                 console.log(err.message);
