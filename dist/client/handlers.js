@@ -1,15 +1,27 @@
+import { handleMove, MoveOutcome } from "../internal/gamelogic/move.js";
 import { handlePause } from "../internal/gamelogic/pause.js";
-import { handleMove } from "../internal/gamelogic/move.js";
+import { AckType } from "../internal/pubsub/consume.js";
 export function handlerPause(gs) {
     return (ps) => {
         handlePause(gs, ps);
         process.stdout.write("> ");
+        return AckType.Ack;
     };
 }
 export function handlerMove(gs) {
     return (move) => {
-        handleMove(gs, move);
-        console.log(`Moved ${move.units.length} units to ${move.toLocation}`);
-        process.stdout.write("> ");
+        try {
+            const outcome = handleMove(gs, move);
+            switch (outcome) {
+                case MoveOutcome.Safe:
+                case MoveOutcome.MakeWar:
+                    return AckType.Ack;
+                default:
+                    return AckType.NackDiscard;
+            }
+        }
+        finally {
+            process.stdout.write("> ");
+        }
     };
 }

@@ -1,4 +1,10 @@
 import amqp, {} from "amqplib";
+export var AckType;
+(function (AckType) {
+    AckType[AckType["Ack"] = 0] = "Ack";
+    AckType[AckType["NackDiscard"] = 1] = "NackDiscard";
+    AckType[AckType["NackRequeue"] = 2] = "NackRequeue";
+})(AckType || (AckType = {}));
 export var SimpleQueueType;
 (function (SimpleQueueType) {
     SimpleQueueType[SimpleQueueType["Durable"] = 0] = "Durable";
@@ -10,6 +16,9 @@ export async function declareAndBind(conn, exchange, queueName, key, queueType) 
         durable: queueType === SimpleQueueType.Durable,
         exclusive: queueType !== SimpleQueueType.Durable,
         autoDelete: queueType !== SimpleQueueType.Durable,
+        arguments: {
+            "x-dead-letter-exchange": "peril_dlx",
+        },
     });
     await ch.bindQueue(queue.queue, exchange, key);
     return [ch, queue];
@@ -27,7 +36,31 @@ export async function subscribeJSON(conn, exchange, queueName, key, queueType, h
             console.error("Could not unmarshal message:", err);
             return;
         }
-        handler(data);
-        ch.ack(msg);
+        try {
+            const result = handler(data);
+            switch (result) {
+                case AckType.Ack:
+                    ch.ack(msg);
+                    console.log("Ack");
+                    break;
+                case AckType.NackDiscard:
+                    ch.nack(msg, false, false);
+                    console.log("NackDiscard");
+                    break;
+                case AckType.NackRequeue:
+                    ch.nack(msg, false, true);
+                    console.log("NackRequeue");
+                    break;
+                default:
+                    const unreachable = result;
+                    console.error("Unexpected ack type:", unreachable);
+                    return;
+            }
+        }
+        catch (err) {
+            console.error("Error handling message:", err);
+            ch.nack(msg, false, false);
+            return;
+        }
     });
 }
