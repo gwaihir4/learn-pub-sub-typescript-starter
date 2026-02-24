@@ -1,3 +1,4 @@
+import { decode } from "@msgpack/msgpack";
 import amqp, {} from "amqplib";
 export var AckType;
 (function (AckType) {
@@ -23,17 +24,17 @@ export async function declareAndBind(conn, exchange, queueName, key, queueType) 
     await ch.bindQueue(queue.queue, exchange, key);
     return [ch, queue];
 }
-export async function subscribeJSON(conn, exchange, queueName, key, queueType, handler) {
-    const [ch, queue] = await declareAndBind(conn, exchange, queueName, key, queueType);
+export async function subscribe(conn, exchange, queueName, routingKey, queueType, handler, unmarshaller) {
+    const [ch, queue] = await declareAndBind(conn, exchange, queueName, routingKey, queueType);
     await ch.consume(queue.queue, async (msg) => {
         if (!msg)
             return;
         let data;
         try {
-            data = JSON.parse(msg.content.toString());
+            data = unmarshaller(msg.content);
         }
         catch (err) {
-            console.error("Could not unmarshal message:", err);
+            console.error("Could not decode message:", err);
             return;
         }
         try {
@@ -41,26 +42,27 @@ export async function subscribeJSON(conn, exchange, queueName, key, queueType, h
             switch (result) {
                 case AckType.Ack:
                     ch.ack(msg);
-                    console.log("Ack");
                     break;
                 case AckType.NackDiscard:
                     ch.nack(msg, false, false);
-                    console.log("NackDiscard");
                     break;
                 case AckType.NackRequeue:
                     ch.nack(msg, false, true);
-                    console.log("NackRequeue");
                     break;
                 default:
                     const unreachable = result;
                     console.error("Unexpected ack type:", unreachable);
-                    return;
             }
         }
         catch (err) {
-            console.error("Error handling message:", err);
+            console.error("Error in handler:", err);
             ch.nack(msg, false, false);
-            return;
         }
-    });
+    }, { noAck: false });
+}
+export async function subscribeJSON(conn, exchange, queueName, key, queueType, handler) {
+    return subscribe(conn, exchange, queueName, key, queueType, handler, (data) => JSON.parse(data.toString()));
+}
+export async function subscribeMsgPack(conn, exchange, queueName, key, queueType, handler) {
+    return subscribe(conn, exchange, queueName, key, queueType, handler, (data) => decode(data));
 }

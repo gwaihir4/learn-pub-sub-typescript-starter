@@ -4,6 +4,7 @@ import { AckType } from "../internal/pubsub/consume.js";
 import { publishJSON } from "../internal/pubsub/publish.js";
 import { ExchangePerilTopic, WarRecognitionsPrefix, } from "../internal/routing/routing.js";
 import { handleWar, WarOutcome } from "../internal/gamelogic/war.js";
+import { publishGameLog } from "./index.js";
 export function handlerPause(gs) {
     return (ps) => {
         handlePause(gs, ps);
@@ -41,7 +42,7 @@ export function handlerMove(gs, ch) {
         }
     };
 }
-export function handlerWar(gs) {
+export function handlerWar(gs, ch) {
     return async (war) => {
         try {
             const outcome = handleWar(gs, war);
@@ -51,8 +52,31 @@ export function handlerWar(gs) {
                 case WarOutcome.NoUnits:
                     return AckType.NackDiscard;
                 case WarOutcome.YouWon:
+                    try {
+                        publishGameLog(ch, gs.getUsername(), `${outcome.winner} won the war against ${outcome.loser}.`);
+                    }
+                    catch (err) {
+                        console.error("Error publishing game log:", err);
+                        return AckType.NackRequeue;
+                    }
+                    return AckType.Ack;
                 case WarOutcome.OpponentWon:
+                    try {
+                        publishGameLog(ch, gs.getUsername(), `${outcome.winner} won the war against ${outcome.loser}.`);
+                    }
+                    catch (err) {
+                        console.error("Error publishing game log:", err);
+                        return AckType.NackRequeue;
+                    }
+                    return AckType.Ack;
                 case WarOutcome.Draw:
+                    try {
+                        publishGameLog(ch, gs.getUsername(), `A war between ${outcome.attacker} and ${outcome.defender} resulted in a draw.`);
+                    }
+                    catch (err) {
+                        console.error("Error publishing game log:", err);
+                        return AckType.NackRequeue;
+                    }
                     return AckType.Ack;
                 default:
                     const unreachable = outcome;
