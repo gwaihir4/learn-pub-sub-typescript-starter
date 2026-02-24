@@ -25,7 +25,7 @@ export async function declareAndBind(conn, exchange, queueName, key, queueType) 
 }
 export async function subscribeJSON(conn, exchange, queueName, key, queueType, handler) {
     const [ch, queue] = await declareAndBind(conn, exchange, queueName, key, queueType);
-    await ch.consume(queue.queue, function (msg) {
+    await ch.consume(queue.queue, async (msg) => {
         if (!msg)
             return;
         let data;
@@ -37,7 +37,7 @@ export async function subscribeJSON(conn, exchange, queueName, key, queueType, h
             return;
         }
         try {
-            const result = handler(data);
+            const result = await handler(data);
             switch (result) {
                 case AckType.Ack:
                     ch.ack(msg);
